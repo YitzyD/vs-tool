@@ -1,0 +1,21 @@
+{
+  "name": "virtual-server-client-example",
+  "version": "1.0.0",
+  "description": "",
+  "main": "vs-tool.js",
+  "bin": {
+    "vs-tool": "vs-tool.js"
+  },
+  "scripts": {
+    "start": "node main.js"
+  },
+  "author": "Yitzy Dier",
+  "license": "ISC",
+  "dependencies": {
+    "colors": "^1.4.0",
+    "kubernetes-client": "^9.0.0",
+    "node-fetch": "^2.6.1",
+    "node-persist": "^3.1.0",
+    "prompts": "^2.4.0"
+  }
+}
