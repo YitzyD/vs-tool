@@ -1,5 +1,5 @@
 {
-  "name": "virtual-server-client-example",
+  "name": "vs-tool",
   "version": "1.0.0",
   "description": "",
   "main": "vs-tool.js",
