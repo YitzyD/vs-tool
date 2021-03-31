@@ -11,7 +11,7 @@ const main = async() => {
   console.log("Let's create a new Virtual Server.".green)
   console.log("Loading...".green)
   await storage.init({
-    dir: 'vs-tool.cache',
+    dir: __dirname + '/vs-tool.cache',
     ttl: 10 * 60 * 1000, // TTL entries to 10 mins
   });
   const client = new VSClient()
@@ -20,7 +20,7 @@ const main = async() => {
     process.exit(0)
   }
   
-  let images = await storage.getItem('images')
+  let images = await storage.getItem('images') || []
   if(!images) {
     images = await client.image.list({namespace: "vd-images"})
     .then(o => o.body.items)
@@ -35,6 +35,7 @@ const main = async() => {
           return acc
         }, {}))
       .map(i => i[0])
+    .catch(_ => null)
     )
     await storage.setItem('images', images)
   }
@@ -81,17 +82,37 @@ const main = async() => {
       ]
     },
     {
-      type: 'autocomplete',
+      type: () => images.length > 0 ? 'autocomplete' : 'text',
       name: 'image',
-      message: 'Select an image.',
+      message: () => images.length > 0 ? 'Select an image.' : 'Enter source image PVC name for the root FS.',
       format: v => images.filter(i => i.metadata.name === v)[0],
       choices: images.map(i => ({title: i.metadata.name})),
+      validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
+    },
+    {
+      type: () => images.length > 0 ? null : 'text',
+      name: 'imageNamespace',
+      initial: client.defaultNamespace,
+      message: 'Enter the namespace of the source PVC for the root FS.',
+      validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
+    },
+    {
+      type: () => images.length > 0 ? null : 'text',
+      name: "imageSize",
+      message: 'Enter root FS PVC size',
+      validate: v => k8sValidateQuantity(v) || "Must be a valid quantity."
+    },
+    {
+      type: () => images.length > 0 ? null : 'text',
+      name: "imageStorageClassName",
+      message: 'Enter root FS PVC storageClassName',
+      validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
     },
     {
       type: 'autocomplete',
       name: 'os',
       message: 'Select an OS.',
-      initial: (_, values) => values.image.metadata.name.includes("windows") ? "windows" : "linux",
+      initial: (_, values) => (!!values.image) ? (values.image.metadata.name.includes("windows") ? "windows" : "linux") : null,
       choices: [
         {title: "linux"},
         {title: "windows"},
@@ -334,12 +355,12 @@ const buildVS = ({
     },
     storage: {
       root: {
-        size: baseResponse.image.spec.resources.requests.storage,
-        storageClassName: baseResponse.image.spec.storageClassName,
+        size: (!!baseResponse.image) ? baseResponse.image.spec.resources.requests.storage : baseResponse.imageSize,
+        storageClassName: (!!baseResponse.image) ? baseResponse.image.spec.storageClassName : baseResponse.imageStorageClassName,
         source: {
           pvc: {
-            namespace: baseResponse.image.metadata.namespace,
-            name: baseResponse.image.metadata.name
+            namespace: (!!baseResponse.image) ? baseResponse.image.metadata.namespace : baseResponse.imageNamespace,
+            name: (!!baseResponse.image) ? baseResponse.image.metadata.name : baseResponse.image,
           }
         }
       },
