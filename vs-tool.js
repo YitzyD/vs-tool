@@ -20,11 +20,11 @@ const main = async() => {
     process.exit(0)
   }
   
-  let images = await storage.getItem('images') || []
+  let images = await storage.getItem('images')
   if(!images) {
     images = await client.image.list({namespace: "vd-images"})
     .then(o => o.body.items)
-    .then(images =>     
+    .then(images =>  
       Object.values(images.reduce((acc, i) => {
           const name = i.metadata.name
           const base = name.replace(/-\d*-(?!.*-\d*-)/, '-DATE-')
@@ -35,10 +35,12 @@ const main = async() => {
           return acc
         }, {}))
       .map(i => i[0])
-    .catch(_ => null)
     )
-    await storage.setItem('images', images)
+    .then(images => storage.setItem('images', images))
+    .then(() => storage.getItem('images'))
+    .catch(_ => [])
   }
+
   let definitions = await storage.getItem('definitions')
   let gpuOptions = []
   let cpuOptions = []
@@ -86,7 +88,7 @@ const main = async() => {
       name: 'image',
       message: () => images.length > 0 ? 'Select an image.' : 'Enter source image PVC name for the root FS.',
       format: v => images.filter(i => i.metadata.name === v)[0],
-      choices: images.map(i => ({title: i.metadata.name})),
+      choices: images.length > 0 ? images.map(i => ({title: i.metadata.name})): null,
       validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
     },
     {
