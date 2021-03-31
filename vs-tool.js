@@ -341,9 +341,9 @@ const buildVS = ({
             namespace: baseResponse.image.metadata.namespace,
             name: baseResponse.image.metadata.name
           }
-        },
-        swap: resouceResponse.swap
-      }
+        }
+      },
+      swap: resouceResponse.swap
     },
     users,
     network: {
