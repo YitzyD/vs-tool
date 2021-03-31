@@ -283,6 +283,7 @@ const main = async() => {
       .then(o => {
         if(o.statusCode === 201) {
           console.log("Virtual Server Created!".green)
+          console.log(`Run kubectl -n ${vs.metadata.namespace} get vs ${vs.metadata.name} to check out your new Virtual Server`)
         } else {
           console.log(`An unknown error occured. Code: ${o.statusCode}`.red)
         } 
