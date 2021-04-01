@@ -4,6 +4,7 @@ const colors = require('colors');
 const util = require('util')
 const storage = require('node-persist');
 const prompts = require("prompts")
+const xbytes = require('xbytes')
 const fetch = require('node-fetch')
 const { newVirtualServerManifest, k8sValidateQuantity } = require("./util.js")
 
@@ -42,21 +43,27 @@ const main = async() => {
   }
 
   let definitions = await storage.getItem('definitions')
-  let gpuOptions = []
-  let cpuOptions = []
   if(!definitions) {
     definitions = await client.definition.list({namespace: "virtual-server"})
     .then(o => o.body.items)
-    .catch(async _ => {
-      await fetch('https://www.coreweave.com/cloud/api/v1/metadata/instances')
-      .then(r => r.json())
-      .then(o => {
-        cpuOptions = o.filter(v => v.type === 'cpu').map(v => v.id)
-        gpuOptions = o.filter(v => v.type === 'gpu').map(v => v.id)
-      })
-    })
+    .catch(_ => null)
     await storage.setItem('definitions', definitions)
   }
+  let options = await storage.getItem('options')
+  if(!options) {
+    await fetch('https://www.coreweave.com/cloud/api/v1/metadata/instances')
+    .then(r => r.json())
+    .then(o => options = {
+      gpuOptions: o.filter(v => v.type === 'gpu'), 
+      cpuOptions: o.filter(v => v.type === 'cpu')
+    })
+    .then(() => storage.setItem('options', options))
+  }
+  const { 
+    cpuOptions = [],
+    gpuOptions = []
+  } = options || {}
+
   const services = await client.service.list().then(o => o.body.items)
   const pvcs = await client.pvc.list().then(o => o.body.items)
 
@@ -101,6 +108,7 @@ const main = async() => {
     {
       type: () => images.length > 0 ? null : 'text',
       name: "imageSize",
+      initial: "40Gi",
       message: 'Enter root FS PVC size',
       validate: v => k8sValidateQuantity(v) || "Must be a valid quantity."
     },
@@ -145,7 +153,7 @@ const main = async() => {
       choices: (_, values) => {
         return (!!definitions) 
         ? values.definition.spec.presets.filter(p => p.class === 'gpu').map(p => ({title: p.type}))
-        : gpuOptions.map(v => ({title: v}))
+        : gpuOptions.map(v => ({title: v.id}))
       }
     },
     {
@@ -163,7 +171,7 @@ const main = async() => {
       choices: (_, values) => {
         return (!!definitions) 
         ? values.definition.spec.presets.filter(p => p.class === 'cpu').map(p => ({title: p.type}))
-        : cpuOptions.map(v => ({title: v}))
+        : cpuOptions.map(v => ({title: v.id}))
       }
     },
     {
@@ -289,7 +297,9 @@ const main = async() => {
   // const storageResponse = await prompts(storagePrompts, {onCancel})
 
   const vs = buildVS({baseResponse, resouceResponse, users, networkResponse})
+  const price = priceVS({options, vs})
   console.log(util.inspect(vs, false, null, true))
+  console.log(`Your Virtual Server will cost approximately $${price}/hour on Coreweave Cloud.`.green)
   const confirmVS = (await prompts({
     type: "toggle",
     name: "confirmVS",
@@ -325,7 +335,6 @@ const main = async() => {
     }
   }
 }
-
 
 const buildVS = ({
   baseResponse, 
@@ -382,6 +391,22 @@ const buildVS = ({
     initializeRunning: true
   }
   return virtualServerManifest
+}
+
+const priceVS =({vs, options}) => {
+  const option = (!!vs.spec.resources.gpu.type) 
+  ? options.gpuOptions.filter(o => o.id === vs.spec.resources.gpu.type)[0]
+  : options.cpuOptions.filter(o => o.id === vs.spec.resources.cpu.type)[0]
+  if(!option) { return null }
+  const gpuRate = (!!vs.spec.resources.gpu.type) ? option.gpu.billingRate * vs.spec.resources.gpu.count : 0
+  const cpuRate = (!!vs.spec.resources.cpu.type) ? option.cpu.billingRate * vs.spec.resources.cpu.count : 0
+  const memRate = option.cpu.memory.billingRate * xbytes.relative(xbytes.parseSize(vs.spec.resources.memory + (vs.spec.resources.memory.slice(-1) === 'b' ? '' : 'b'), {bits: false}), 'GB').parsed.value
+  const storeRate = 0.000097 * xbytes.relative(xbytes.parseSize(vs.spec.storage.root.size + (vs.spec.storage.root.size.slice(-1) === 'b' ? '' : 'b'), {bits: false}), 'GB').parsed.value
+  + ((!!vs.spec.storage.swap)
+  ? 0.000097 * xbytes.relative(xbytes.parseSize(vs.spec.storage.swap + (vs.spec.storage.swap.slice(-1) === 'b' ? '' : 'b'), {bits: false}), 'GB').parsed.value
+  : 0)
+
+  return (gpuRate + cpuRate + memRate + storeRate).toFixed(2)
 }
 
 main()

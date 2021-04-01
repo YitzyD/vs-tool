@@ -16,6 +16,7 @@
     "kubernetes-client": "^9.0.0",
     "node-fetch": "^2.6.1",
     "node-persist": "^3.1.0",
-    "prompts": "^2.4.0"
+    "prompts": "^2.4.0",
+    "xbytes": "^1.7.0"
   }
 }
