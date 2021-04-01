@@ -299,7 +299,9 @@ const main = async() => {
   const vs = buildVS({baseResponse, resouceResponse, users, networkResponse})
   const price = priceVS({options, vs})
   console.log(util.inspect(vs, false, null, true))
-  console.log(`Your Virtual Server will cost approximately $${price}/hour on Coreweave Cloud.`.green)
+  if(!!price) { 
+    console.log(`Your Virtual Server will cost approximately $${price}/hour on Coreweave Cloud.`.green)
+  }
   const confirmVS = (await prompts({
     type: "toggle",
     name: "confirmVS",
