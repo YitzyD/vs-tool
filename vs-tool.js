@@ -49,6 +49,7 @@ const main = async() => {
     .catch(_ => null)
     await storage.setItem('definitions', definitions)
   }
+
   let options = await storage.getItem('options')
   if(!options) {
     await fetch('https://www.coreweave.com/cloud/api/v1/metadata/instances')
@@ -64,7 +65,6 @@ const main = async() => {
     gpuOptions = []
   } = options || {}
 
-  const services = await client.service.list().then(o => o.body.items)
   const pvcs = await client.pvc.list().then(o => o.body.items)
 
   const basePrompts = [
@@ -206,6 +206,8 @@ const main = async() => {
 
   const baseResponse = await prompts(basePrompts, {onCancel})
   const resouceResponse = await prompts(resourcePrompts, {onCancel})
+
+  const services = await client.service.list({namespace: baseResponse.namespace}).then(o => o.body.items)
 
   let users = []
   for(i=0; (await prompts({
