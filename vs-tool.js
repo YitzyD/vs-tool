@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 const VSClient = require("./client.js")
-const colors = require('colors');
+const colors = require('colors')
 const util = require('util')
+const fs = require('fs')
+const os = require('os')
 const storage = require('node-persist');
 const prompts = require("prompts")
 const xbytes = require('xbytes')
@@ -12,7 +14,7 @@ const main = async() => {
   console.log("Let's create a new Virtual Server.".green)
   console.log("Loading...".green)
   await storage.init({
-    dir: __dirname + '/vs-tool.cache',
+    dir: fs.realpathSync(os.tmpdir()) + '/vs-tool.cache',
     ttl: 10 * 60 * 1000, // TTL entries to 10 mins
   });
   const client = new VSClient()
