@@ -1,31 +1,49 @@
 #!/usr/bin/env node
-const VSClient = require("./client.js")
+const VSClient = require('./client.js')
 const colors = require('colors')
 const util = require('util')
 const fs = require('fs')
 const os = require('os')
 const storage = require('node-persist');
-const prompts = require("prompts")
+const prompts = require('prompts')
 const xbytes = require('xbytes')
 const fetch = require('node-fetch')
-const { newVirtualServerManifest, k8sValidateQuantity } = require("./util.js")
+const yargs = require('yargs')
+const {hideBin} = require('yargs/helpers')
+const { newVirtualServerManifest, k8sValidateQuantity } = require('./util.js')
 
-const main = async() => {
-  console.log("Let's create a new Virtual Server.".green)
-  console.log("Loading...".green)
+let templates = {}
+let client = null
+let options = {}
+const onCancel = (prompt) => {
+  process.exit(0)
+}
+const init = async () => {
+  console.log('Loading...'.green)
   await storage.init({
     dir: fs.realpathSync(os.tmpdir()) + '/vs-tool.cache',
     ttl: 10 * 60 * 1000, // TTL entries to 10 mins
   });
-  const client = new VSClient()
+  client = new VSClient()
   await client.init()
-  const onCancel = (prompt) => {
-    process.exit(0)
+  templates = await storage.getItem('_templates') || {}
+  options = await storage.getItem('options')
+  if(!options) {
+    await fetch('https://www.coreweave.com/cloud/api/v1/metadata/instances')
+    .then(r => r.json())
+    .then(o => options = {
+      gpuOptions: o.filter(v => v.type === 'gpu'), 
+      cpuOptions: o.filter(v => v.type === 'cpu')
+    })
+    .then(() => storage.setItem('options', options))
   }
-  
+} 
+
+const main = async() => {
+  console.log("Let's create a new Virtual Server.".green)
   let images = await storage.getItem('images')
   if(!images) {
-    images = await client.image.list({namespace: "vd-images"})
+    images = await client.image.list({namespace: 'vd-images'})
     .then(o => o.body.items)
     .then(images =>  
       Object.values(images.reduce((acc, i) => {
@@ -46,22 +64,12 @@ const main = async() => {
 
   let definitions = await storage.getItem('definitions')
   if(!definitions) {
-    definitions = await client.definition.list({namespace: "virtual-server"})
+    definitions = await client.definition.list({namespace: 'virtual-server'})
     .then(o => o.body.items)
     .catch(_ => null)
     await storage.setItem('definitions', definitions)
   }
 
-  let options = await storage.getItem('options')
-  if(!options) {
-    await fetch('https://www.coreweave.com/cloud/api/v1/metadata/instances')
-    .then(r => r.json())
-    .then(o => options = {
-      gpuOptions: o.filter(v => v.type === 'gpu'), 
-      cpuOptions: o.filter(v => v.type === 'cpu')
-    })
-    .then(() => storage.setItem('options', options))
-  }
   const { 
     cpuOptions = [],
     gpuOptions = []
@@ -88,15 +96,15 @@ const main = async() => {
       name: 'region',
       message: 'Select a region.',
       choices: [
-        {title: "ORD1"},
-        {title: "EWR1"},
+        {title: 'ORD1'},
+        {title: 'EWR1'},
       ]
     },
     {
       type: () => images.length > 0 ? 'autocomplete' : 'text',
-      name: 'image',
+      name: () => images.length > 0 ? 'image' : 'imageName',
       message: () => images.length > 0 ? 'Select an image.' : 'Enter source image PVC name for the root FS.',
-      format: v => images.filter(i => i.metadata.name === v)[0],
+      format: v => images.length > 0 ? images.filter(i => i.metadata.name === v)[0] : v,
       choices: images.length > 0 ? images.map(i => ({title: i.metadata.name})): null,
       validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
     },
@@ -109,14 +117,14 @@ const main = async() => {
     },
     {
       type: () => images.length > 0 ? null : 'text',
-      name: "imageSize",
-      initial: "40Gi",
+      name: 'imageSize',
+      initial: '40Gi',
       message: 'Enter root FS PVC size',
-      validate: v => k8sValidateQuantity(v) || "Must be a valid quantity."
+      validate: v => k8sValidateQuantity(v) || 'Must be a valid quantity.'
     },
     {
       type: () => images.length > 0 ? null : 'text',
-      name: "imageStorageClassName",
+      name: 'imageStorageClassName',
       message: 'Enter root FS PVC storageClassName',
       validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
     },
@@ -124,10 +132,10 @@ const main = async() => {
       type: 'autocomplete',
       name: 'os',
       message: 'Select an OS.',
-      initial: (_, values) => (!!values.image) ? (values.image.metadata.name.includes("windows") ? "windows" : "linux") : null,
+      initial: (_, values) => (!!values.image) ? (values.image.metadata.name.includes('windows') ? 'windows' : 'linux') : null,
       choices: [
-        {title: "linux"},
-        {title: "windows"},
+        {title: 'linux'},
+        {title: 'windows'},
       ]
     }
   ]
@@ -187,8 +195,8 @@ const main = async() => {
       type: 'text',
       name: 'memory',
       message: 'Enter memory amount.',
-      initial: "1Gi",
-      validate: v => k8sValidateQuantity(v) || "Must be a valid quantity."
+      initial: '1Gi',
+      validate: v => k8sValidateQuantity(v) || 'Must be a valid quantity.'
     },
     {
       type: 'toggle',
@@ -201,8 +209,8 @@ const main = async() => {
       type: (_, values) => values.addSwap ? 'text' : null,
       name: 'swap',
       message: 'Enter swap amount.',
-      initial: "1Gi",
-      validate: v => k8sValidateQuantity(v) || "Must be a valid quantity."
+      initial: '1Gi',
+      validate: v => k8sValidateQuantity(v) || 'Must be a valid quantity.'
     },
   ]
 
@@ -217,14 +225,14 @@ const main = async() => {
     name: 'addUser',
     active: 'true',
     inactive: 'false',
-    message: `Add ${i === 0 ? "a" : "another"} User?`
+    message: `Add ${i === 0 ? 'a' : 'another'} User?`
   }, {onCancel})).addUser; i++) {
     userPrompts = [
       {
         type: 'text',
         name: 'username',
         message: 'Enter a username.',
-        validate: v => users.every(u => u.username !== v) || "User already added."
+        validate: v => users.every(u => u.username !== v) || 'User already added.'
       },
       {
         type: 'password',
@@ -240,59 +248,59 @@ const main = async() => {
 
   networkPrompts = [
     {
-      type: "toggle",
-      name: "directAttach",
-      active: "true",
-      inactive: "false",
-      message: "Direct attach load balancer?"
+      type: 'toggle',
+      name: 'directAttach',
+      active: 'true',
+      inactive: 'false',
+      message: 'Direct attach load balancer?'
     },
     {
-      type: (_, values) => values.directAttach ? null : "list",
-      name: "tcpPorts",
-      message: "Enter a list of tcp ports to expose.",
+      type: (_, values) => values.directAttach ? null : 'list',
+      name: 'tcpPorts',
+      message: 'Enter a list of tcp ports to expose.',
       format: v => v.filter(v => v !== '').map(v => parseInt(v)),
       validate: v => {
         const ps = v.split(',').filter(v => v !== '')
-        return ps.length > 10 ? "Maximum of 10 ports"
-        : ps.every(p => (pInt = parseInt(p), pInt !== NaN && pInt > 0 && pInt <= 65536)) || "Invalid port value. 0 > port <= 65536."
+        return ps.length > 10 ? 'Maximum of 10 ports'
+        : ps.every(p => (pInt = parseInt(p), pInt !== NaN && pInt > 0 && pInt <= 65536)) || 'Invalid port value. 0 > port <= 65536.'
       }
     },
     {
-      type: (_, values) => values.directAttach ? null : "list",
-      name: "udpPorts",
-      message: "Enter a list of udp ports to expose.",
+      type: (_, values) => values.directAttach ? null : 'list',
+      name: 'udpPorts',
+      message: 'Enter a list of udp ports to expose.',
       format: v => v.filter(v => v !== '').map(v => parseInt(v)),
       validate: v => {
         const ps = v.split(',').filter(v => v !== '')
-        return ps.length > 10 ? "Maximum of 10 ports"
-        : ps.every(p => (pInt = parseInt(p), pInt !== NaN && pInt > 0 && pInt <= 65536)) || "Invalid port value. 0 > port <= 65536."
+        return ps.length > 10 ? 'Maximum of 10 ports'
+        : ps.every(p => (pInt = parseInt(p), pInt !== NaN && pInt > 0 && pInt <= 65536)) || 'Invalid port value. 0 > port <= 65536.'
       }
     },
     {
-      type: "multiselect",
-      name: "floatingIPs",
+      type: 'multiselect',
+      name: 'floatingIPs',
       instructions: false,
       hint: '- Space to select. Return to submit',
-      message: "Select any number of floating IP services.",
+      message: 'Select any number of floating IP services.',
       choices: services.map(s => s.metadata.name),
       format: v => v.map(v => services[v])
     },
     {
-      type: (_, values) => values.directAttach || values.tcpPorts.length > 0 || values.udpPorts.length > 0 ? "toggle" : null,
-      name: "public",
-      active: "true",
-      inactive: "false",
-      message: "Create a public IP?",
+      type: (_, values) => values.directAttach || values.tcpPorts.length > 0 || values.udpPorts.length > 0 ? 'toggle' : null,
+      name: 'public',
+      active: 'true',
+      inactive: 'false',
+      message: 'Create a public IP?',
     }
   ]
 
   const storagePrompts = [
     {
-      type: "multiselect",
-      name: "additionalFS",
+      type: 'multiselect',
+      name: 'additionalFS',
       instructions: false,
       hint: '- Space to select. Return to submit',
-      message: "Select any number of pvcs to be mounted as filesystems.",
+      message: 'Select any number of pvcs to be mounted as filesystems.',
       choices: pvcs.map(s => s.metadata.name),
       format: v => v.map(v => pvcs[v])
     }
@@ -301,45 +309,73 @@ const main = async() => {
   // const storageResponse = await prompts(storagePrompts, {onCancel})
 
   const vs = buildVS({baseResponse, resouceResponse, users, networkResponse})
+  await applyVS(vs)
+
+  const templateResponse = await prompts([
+    {
+    type: 'toggle',
+    name: 'confirmSaveTemplate',
+    active: 'yes',
+    inactive: 'no',
+    message: 'Would you like to save this configuration as a template?'
+    },
+    {
+      type: (_, values) => values.confirmSaveTemplate ? 'text' : null,
+      name: 'name',
+      initial: vs.metadata.name,
+      validate: v => (!!templates[v]) ? 'Template name already taken.' : true,
+      message: 'Enter a name for the template.'
+    }],
+    {onCancel}
+  )
+  if(templateResponse.confirmSaveTemplate) {
+    console.log(`Saving template ${templateResponse.name}...`.green)
+    await storage.setItem('_templates', {...templates, [templateResponse.name]: vs}, {ttl: false})
+    console.log(`Template saved`.green)
+  }
+}
+
+const applyVS = async(vs) => {
   const price = priceVS({options, vs})
   console.log(util.inspect(vs, false, null, true))
   if(!!price) { 
     console.log(`Your Virtual Server will cost approximately $${price}/hour on Coreweave Cloud.`.green)
   }
   const confirmVS = (await prompts({
-    type: "toggle",
-    name: "confirmVS",
-    active: "yes",
-    inactive: "no",
-    message: "Please confirm the Virtual Server spec above."
+    type: 'toggle',
+    name: 'confirmVS',
+    active: 'yes',
+    inactive: 'no',
+    message: 'Please confirm the Virtual Server spec above.'
   }, {onCancel})).confirmVS
 
-  if(confirmVS) {
-    let tryAgain = true
-    while(tryAgain) {
-      console.log(`Creating your Virtual Server: ${vs.metadata.namespace}/${vs.metadata.name}...`.green)
-      await client.virtualServer.create(vs)
-      .then(o => {
-        if(o.statusCode === 201) {
-          console.log("Virtual Server Created!".green)
-          console.log(`Run kubectl -n ${vs.metadata.namespace} get vs ${vs.metadata.name} to check out your new Virtual Server`)
-        } else {
-          console.log(`An unknown error occured. Code: ${o.statusCode}`.red)
-        } 
+  let tryAgain = confirmVS
+  while(tryAgain) {
+    console.log(`Creating your Virtual Server: ${vs.metadata.namespace}/${vs.metadata.name}...`.green)
+    await client.virtualServer.create(vs)
+    .then(o => {
+      if(o.statusCode === 201) {
+        console.log('Virtual Server Created!'.green)
+        console.log(`Run 'kubectl -n ${vs.metadata.namespace} get vs ${vs.metadata.name}' to check out your new Virtual Server`)
         tryAgain = false
-       })
-       .catch(async err => {
-          console.log(`An error occured while creating the Virtual Server. ${err.message}`.red)
-          tryAgain = await prompts({
-            type: "toggle",
-            name: "tryAgain",
-            active: "yes",
-            inactive: "no",
-            message: "Try again?"
-          }, {onCancel}).tryAgain
-       })
+      } else {
+        console.log(`An unknown error occured. Code: ${o.statusCode}`.red)
+      } 
+    })
+    .catch(err => {
+      console.log(`An error occured while creating the Virtual Server. ${err.message}`.red)
+    })
+    if(tryAgain) {
+      tryAgain = await prompts({
+        type: 'toggle',
+        name: 'tryAgain',
+        active: 'yes',
+        inactive: 'no',
+        message: 'Try again?'
+      }, {onCancel}).tryAgain
     }
   }
+  return false
 }
 
 const buildVS = ({
@@ -377,7 +413,7 @@ const buildVS = ({
         source: {
           pvc: {
             namespace: (!!baseResponse.image) ? baseResponse.image.metadata.namespace : baseResponse.imageNamespace,
-            name: (!!baseResponse.image) ? baseResponse.image.metadata.name : baseResponse.image,
+            name: (!!baseResponse.image) ? baseResponse.image.metadata.name : baseResponse.imageName,
           }
         }
       },
@@ -415,4 +451,66 @@ const priceVS =({vs, options}) => {
   return (gpuRate + cpuRate + memRate + storeRate).toFixed(2)
 }
 
-main()
+const useTemplate = async ({templateName}) => {
+  if(!Object.keys(templates).length) {
+    console.log('No templates available.'.red)
+    return
+  }
+  let vs = {}
+  if(templateName) {
+    vs = templates[templateName]
+  } else {
+    vs = (await prompts([
+      {
+        type: () => 'autocomplete',
+        name: 'template',
+        message: () => 'Select a template.',
+        choices: () => Object.keys(templates).map(v => ({title: v})) || [],
+        format: v => templates[v]
+      }
+    ], {onCancel})).template
+  }
+  await applyVS(vs)
+}
+
+const deleteTemplate = ({templateName}) => {
+  if(!Object.keys(templates).length) {
+    console.log(`Template ${templateName} not found.`.red)
+    return
+  }
+  const {[templateName]:k, ...newTemplates} = templates
+  storage.setItem('_templates', newTemplates, {ttl: false})
+}
+
+const argv = yargs(hideBin(process.argv))
+  .command('*', 'Create a Virtual Server', () => {}, () => init().then(main))
+  .command({
+    command: 'template',
+    type: 'boolean',
+    alias: 'tpl',
+    desc: 'Create a Virtual Server using a previously saved template',
+    builder: yargs => [
+      yargs.option('from-save', {
+        alias: 's',
+        requiresArg: true,
+        type: 'string',
+        desc: 'The template to use'
+      }),
+      yargs.option('delete', {
+        alias: 'd',
+        requiresArg: true,
+        type: 'string',
+        desc: 'Delete a template'
+      })
+    ],
+    handler: argv => init().then(() => {
+      if(argv.delete) {
+        deleteTemplate({templateName: argv.delete})
+      } else {
+        useTemplate({templateName: argv.fromSave})
+      }
+    })
+  })
+  .command('completion', 'Generate completion script', () => {}, () => yargs.showCompletionScript())
+  .showHelpOnFail(false)
+  .argv
