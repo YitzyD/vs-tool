@@ -483,12 +483,12 @@ const deleteTemplate = ({templateName}) => {
 }
 
 const argv = yargs(hideBin(process.argv))
-  .command('*', 'Create a Virtual Server', () => {}, () => init().then(main))
+  .command('new', 'Create a Virtual Server', () => {}, () => init().then(main))
   .command({
     command: 'template',
     type: 'boolean',
     alias: 'tpl',
-    desc: 'Create a Virtual Server using a previously saved template',
+    desc: 'Create a Virtual Server using a saved template',
     builder: yargs => [
       yargs.option('from-save', {
         alias: 's',
@@ -501,16 +501,26 @@ const argv = yargs(hideBin(process.argv))
         requiresArg: true,
         type: 'string',
         desc: 'Delete a template'
+      }),
+      yargs.option('list', {
+        alias: 'l',
+        type: 'boolean',
+        desc: 'List all templates'
       })
     ],
     handler: argv => init().then(() => {
       if(argv.delete) {
         deleteTemplate({templateName: argv.delete})
+      } else if(argv.list) {
+        console.log(`Saved templates:\n\t${Object.keys(templates).join('\n\t')}`.green)
       } else {
         useTemplate({templateName: argv.fromSave})
       }
     })
   })
   .command('completion', 'Generate completion script', () => {}, () => yargs.showCompletionScript())
-  .showHelpOnFail(false)
+  .showHelpOnFail(true)
+  .demandCommand()
+  .recommendCommands()
+  .strict()
   .argv
