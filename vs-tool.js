@@ -470,6 +470,25 @@ const useTemplate = async ({templateName}) => {
       }
     ], {onCancel})).template
   }
+  const vsEdits = await prompts([
+    {
+      type: 'text',
+      name: 'name',
+      message: 'Enter a name for your Virtual Server.',
+      initial: () => vs.metadata.name,
+      validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
+    },
+    {
+      type: 'text',
+      name: 'namespace',
+      initial: client.defaultNamespace,
+      message: 'Enter the namespace to deploy your Virtual Server to.',
+      validate: v => /[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/.test(v)
+    },
+  ], {onCancel})
+  
+  vs.metadata.name = vsEdits.name
+  vs.metadata.namespace = vsEdits.namespace
   await applyVS(vs)
 }
 
