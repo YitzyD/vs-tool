@@ -1,13 +1,17 @@
 {
   "name": "vs-tool",
   "version": "1.0.0",
-  "description": "",
+  "description": "A tool to create and deploy Virtual Servers to CoreWeave Cloud",
+  "engines": {
+    "node": ">=12.0"
+  },
+  "engineStrict": true,
   "main": "vs-tool.js",
   "bin": {
     "vs-tool": "vs-tool.js"
   },
   "scripts": {
-    "start": "node main.js"
+    "start": "node vs-tool.js"
   },
   "author": "Yitzy Dier",
   "license": "ISC",
