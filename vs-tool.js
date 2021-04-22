@@ -309,7 +309,9 @@ const main = async() => {
   // const storageResponse = await prompts(storagePrompts, {onCancel})
 
   const vs = buildVS({baseResponse, resouceResponse, users, networkResponse})
-  await applyVS(vs)
+  if(!await applyVS(vs)) {
+    return
+  }
 
   const templateResponse = await prompts([
     {
@@ -349,31 +351,42 @@ const applyVS = async(vs) => {
     message: 'Please confirm the Virtual Server spec above.'
   }, {onCancel})).confirmVS
 
-  let tryAgain = confirmVS
-  while(tryAgain) {
+  const applyFunc = async () => {
     console.log(`Creating your Virtual Server: ${vs.metadata.namespace}/${vs.metadata.name}...`.green)
-    await client.virtualServer.create(vs)
+    const createSuccess = await client.virtualServer.create(vs)
     .then(o => {
       if(o.statusCode === 201) {
         console.log('Virtual Server Created!'.green)
         console.log(`Run 'kubectl -n ${vs.metadata.namespace} get vs ${vs.metadata.name}' to check out your new Virtual Server`)
-        tryAgain = false
+        return true
       } else {
         console.log(`An unknown error occured. Code: ${o.statusCode}`.red)
+        return false
       } 
     })
     .catch(err => {
       console.log(`An error occured while creating the Virtual Server. ${err.message}`.red)
+      return false
     })
-    if(tryAgain) {
-      tryAgain = await prompts({
+    if(!createSuccess) {
+      const tryAgain = (await prompts({
         type: 'toggle',
         name: 'tryAgain',
         active: 'yes',
         inactive: 'no',
         message: 'Try again?'
-      }, {onCancel}).tryAgain
+      }, {onCancel})).tryAgain
+      console.log(tryAgain)
+      if(tryAgain) {
+        return applyFunc()
+      }
     }
+
+    return true
+  }
+
+  if(confirmVS) {
+    return applyFunc()
   }
   return false
 }
